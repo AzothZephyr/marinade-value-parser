@@ -1,16 +1,16 @@
 use anchor_lang::prelude::*;
 
-#[derive(AnchorDeserialize, AnchorSerialize, Clone, Default)]
+#[derive(AnchorDeserialize, AnchorSerialize, Clone, Default, Debug)]
 pub struct Fee {
     pub basis_points: u32,
 }
 
-#[derive(AnchorDeserialize, AnchorSerialize, Clone, Default)]
+#[derive(AnchorDeserialize, AnchorSerialize, Clone, Default, Debug)]
 pub struct FeeCents {
     pub bp_cents: u32,
 }
 
-#[derive(AnchorDeserialize, AnchorSerialize, Clone, Default)]
+#[derive(AnchorDeserialize, AnchorSerialize, Clone, Default, Debug)]
 pub struct List {
     pub account: Pubkey,
     pub item_size: u32,
@@ -18,8 +18,7 @@ pub struct List {
     pub reserved1: Pubkey,
     pub reserved2: u32,
 }
-
-#[derive(AnchorDeserialize, AnchorSerialize, Clone, Default)]
+#[derive(AnchorDeserialize, AnchorSerialize, Clone, Default, Debug)]
 pub struct LiqPool {
     pub lp_mint: Pubkey,
     pub lp_mint_authority_bump_seed: u8,
@@ -35,7 +34,7 @@ pub struct LiqPool {
     pub liquidity_sol_cap: u64,
 }
 
-#[derive(AnchorDeserialize, AnchorSerialize, Clone, Default)]
+#[derive(AnchorDeserialize, AnchorSerialize, Clone, Default, Debug)]
 pub struct StakeSystem {
     pub stake_list: List,
     pub delayed_unstake_cooling_down: u64,
@@ -47,7 +46,7 @@ pub struct StakeSystem {
     pub extra_stake_delta_runs: u32,
 }
 
-#[derive(AnchorDeserialize, AnchorSerialize, Clone, Default)]
+#[derive(AnchorDeserialize, AnchorSerialize, Clone, Default, Debug)]
 pub struct ValidatorSystem {
     pub validator_list: List,
     pub manager_authority: Pubkey,
@@ -56,7 +55,7 @@ pub struct ValidatorSystem {
     pub auto_add_validator_enabled: u8,
 }
 
-#[derive(AnchorDeserialize, AnchorSerialize, Clone, Default)]
+#[derive(AnchorDeserialize, AnchorSerialize, Clone, Default, Debug)]
 pub struct MarinadeState {
     pub msol_mint: Pubkey,
     pub admin_authority: Pubkey,
