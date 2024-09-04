@@ -26,9 +26,7 @@ pub struct MintUnderlying {
 
 fn find_and_parse_marinade_state(tx: &EncodedConfirmedTransactionWithStatusMeta, pubkey: &Pubkey, pre: bool) -> Option<MarinadeState> {
     let meta = tx.transaction.meta.as_ref()?;
-    let versioned_tx = tx.transaction.transaction.decode()?; // Decode the VersionedTransaction
-
-    // Access account keys through the message
+    let versioned_tx = tx.transaction.transaction.decode()?;
     let account_keys = versioned_tx.message.static_account_keys();
 
     let token_balances = if pre {
@@ -64,13 +62,16 @@ fn find_and_parse_marinade_state(tx: &EncodedConfirmedTransactionWithStatusMeta,
 }
 
 pub fn analyze_transaction(tx: &EncodedConfirmedTransactionWithStatusMeta) -> Option<MintUnderlying> {
-    let msol_mint_pubkey = Pubkey::from_str(MSOL_MINT_PUBKEY).ok()?;
+    // let msol_mint_pubkey = Pubkey::from_str(MSOL_MINT_PUBKEY).ok()?;
     let marinade_state_pubkey = Pubkey::from_str(MARINADE_STATE_PUBKEY).ok()?;
 
     let pre_state = find_and_parse_marinade_state(tx, &marinade_state_pubkey, true)?;
     let post_state = find_and_parse_marinade_state(tx, &marinade_state_pubkey, false)?;
 
     if !does_tx_affect_msol_value(&pre_state, &post_state) {
+        let decoded_transaction = tx.transaction.transaction.decode()?;
+        let signature = decoded_transaction.signatures.get(0)?;
+        println!("tx hash {} does not modify msol state", signature);
         return None;
     }
 
@@ -118,14 +119,53 @@ mod tests {
     #[test]
     fn test_deposit_transaction() {
         let deposit_signature = "4uL95njGxnL7oPRBv6qb9ZKeWbTfKifbJgKe5zJ98FFyh7TJofUghQ2tcp4gR9fUHsX5exHayzcK9Zt1SR1Cwy7k";
-        let tx = fetch_transaction(deposit_signature).expect("Failed to fetch deposit transaction");
+        let expected_sol_deposit_value: f64 = 0.020890732; // explicitly define the type as f64
+        let expected_msol_returned_value: f64 = 0.017192933; // same as above
+
+        let tx = fetch_transaction(deposit_signature).expect("failed to fetch deposit transaction");
+
+        println!("tx fetched: {:?}", tx);
+
         let result = analyze_transaction(&tx);
 
-        assert!(result.is_some(), "Deposit transaction should produce a result");
+        // Adding more information to understand why the transaction might fail
+        if result.is_none() {
+            println!("no MintUnderlying result was returned from analyze_transaction");
+        }
+
+        assert!(result.is_some(), "deposit transaction should produce a result");
+
         let mint_underlying = result.unwrap();
-        
+
+        println!("MintUnderlying: {:?}", mint_underlying);
+
+        // validate the mints and platform details
         assert_eq!(mint_underlying.mint_pubkey, MSOL_MINT_PUBKEY);
         assert_eq!(mint_underlying.platform_program_pubkey, MARINADE_STATE_PUBKEY);
         assert_eq!(mint_underlying.mints, vec![MSOL_MINT_PUBKEY.to_string()]);
+
+        // validate that the total underlying amounts match expected sol deposits
+        assert!(!mint_underlying.total_underlying_amounts.is_empty(), "total underlying amounts should not be empty");
+
+        // assert that the underlying SOL amount is within an expected range (within a reasonable tolerance)
+        let total_underlying_sol = mint_underlying.total_underlying_amounts[0];
+        let expected_min = (expected_sol_deposit_value * 1_000_000_000.0_f64).round() as u64; // Convert to lamports
+        let expected_max = expected_min + 10; // Allowing some margin of error
+
+        assert!(
+            total_underlying_sol >= expected_min && total_underlying_sol <= expected_max,
+            "total underlying SOL is outside the expected range"
+        );
+
+        // assert msol_value similarly:
+        let msol_value = mint_underlying.msol_value;
+        let expected_msol_min = (expected_msol_returned_value * 1_000_000_000.0_f64).round() as u64;
+        let expected_msol_max = expected_msol_min + 10; // Margin of error
+
+        assert!(
+            msol_value >= expected_msol_min && msol_value <= expected_msol_max,
+            "msol value is outside the expected range"
+        );
     }
 }
+
