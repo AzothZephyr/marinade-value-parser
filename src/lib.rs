@@ -10,6 +10,7 @@ use anchor_lang::AnchorDeserialize;
 use crate::accounts::marinade::MarinadeState;
 use crate::accounts::instructions::MarinadeFinanceInstruction;
 
+const SOL_MINT_PUBKEY: &str = "So11111111111111111111111111111111111111112";
 const MSOL_MINT_PUBKEY: &str = "mSoLzYCxHdYgdzU16g5QSh3i5K3z3KZK1iNKhS3nZF";
 const MARINADE_STATE_PUBKEY: &str = "8szGkuLTAux9XMgZ2vtY39jVSowEcpBfFfD8hXSEqdGC";
 
@@ -85,15 +86,18 @@ pub fn analyze_transaction(rpc_client: &RpcClient, tx: &EncodedConfirmedTransact
     // total_active_balance + total_cooling_down + reserve - circulating_ticket_balance
     // DIVIDED by msol_supply
     // -----
-    let msol_value = (post_state.validator_system.total_active_balance + post_state.emergency_cooling_down + post_state.available_reserve_balance - post_state.circulating_ticket_balance) / post_state.msol_supply;
+    let sol_amount = post_state.validator_system.total_active_balance + post_state.emergency_cooling_down + post_state.available_reserve_balance - post_state.circulating_ticket_balance;
+    let msol_value = sol_amount / post_state.msol_supply;
 
     let block_time = tx.block_time?;
     let mint_pubkey = MSOL_MINT_PUBKEY.to_string();
     let platform_program_pubkey = MARINADE_STATE_PUBKEY.to_string();
 
-    // TODO
-    let mints = vec![];
-    let total_underlying_amounts = vec![];
+
+    // TODO: i think there's a better way to do this where we don't have to hardcode the SOL mint pubkey and
+    // instead review the post_state object for all mints underlying the lst
+    let mints = vec![SOL_MINT_PUBKEY.to_string()];
+    let total_underlying_amounts = vec![sol_amount];
 
     Some(MintUnderlying {
         block_time,
