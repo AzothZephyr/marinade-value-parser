@@ -227,8 +227,7 @@ mod tests {
     #[test]
     fn test_does_tx_affect_msol_value() {
         env_logger::init();  // initialize logger
-
-        let rpc_client = RpcClient::new("https://api.mainnet-beta.solana.com".to_string());
+        
         let deposit_signature = "4uL95njGxnL7oPRBv6qb9ZKeWbTfKifbJgKe5zJ98FFyh7TJofUghQ2tcp4gR9fUHsX5exHayzcK9Zt1SR1Cwy7k";
 
         debug!("fetching transaction...");
