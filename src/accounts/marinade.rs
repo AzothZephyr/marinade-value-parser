@@ -1,16 +1,24 @@
 use anchor_lang::prelude::*;
 
-#[derive(AnchorDeserialize, AnchorSerialize, Clone, Default, Debug)]
+fn parse_marinade_state(account_data: &[u8]) -> MarinadeState {
+    let marinade_state: MarinadeState = MarinadeState::try_from_slice(account_data)
+        .expect("Failed to deserialize Marinade state");
+    
+    marinade_state
+}
+
+
+#[derive(AnchorDeserialize, AnchorSerialize, Clone, Default, Debug, PartialEq)]
 pub struct Fee {
     pub basis_points: u32,
 }
 
-#[derive(AnchorDeserialize, AnchorSerialize, Clone, Default, Debug)]
+#[derive(AnchorDeserialize, AnchorSerialize, Clone, Default, Debug, PartialEq)]
 pub struct FeeCents {
     pub bp_cents: u32,
 }
 
-#[derive(AnchorDeserialize, AnchorSerialize, Clone, Default, Debug)]
+#[derive(AnchorDeserialize, AnchorSerialize, Clone, Default, Debug, PartialEq)]
 pub struct List {
     pub account: Pubkey,
     pub item_size: u32,
@@ -18,7 +26,7 @@ pub struct List {
     pub reserved1: Pubkey,
     pub reserved2: u32,
 }
-#[derive(AnchorDeserialize, AnchorSerialize, Clone, Default, Debug)]
+#[derive(AnchorDeserialize, AnchorSerialize, Clone, Default, Debug, PartialEq)]
 pub struct LiqPool {
     pub lp_mint: Pubkey,
     pub lp_mint_authority_bump_seed: u8,
@@ -34,7 +42,7 @@ pub struct LiqPool {
     pub liquidity_sol_cap: u64,
 }
 
-#[derive(AnchorDeserialize, AnchorSerialize, Clone, Default, Debug)]
+#[derive(AnchorDeserialize, AnchorSerialize, Clone, Default, Debug, PartialEq)]
 pub struct StakeSystem {
     pub stake_list: List,
     pub delayed_unstake_cooling_down: u64,
@@ -46,7 +54,7 @@ pub struct StakeSystem {
     pub extra_stake_delta_runs: u32,
 }
 
-#[derive(AnchorDeserialize, AnchorSerialize, Clone, Default, Debug)]
+#[derive(AnchorDeserialize, AnchorSerialize, Clone, Default, Debug, PartialEq)]
 pub struct ValidatorSystem {
     pub validator_list: List,
     pub manager_authority: Pubkey,
@@ -55,7 +63,7 @@ pub struct ValidatorSystem {
     pub auto_add_validator_enabled: u8,
 }
 
-#[derive(AnchorDeserialize, AnchorSerialize, Clone, Default, Debug)]
+#[derive(AnchorDeserialize, AnchorSerialize, Clone, Default, Debug, PartialEq)]
 pub struct MarinadeState {
     pub msol_mint: Pubkey,
     pub admin_authority: Pubkey,
@@ -87,3 +95,6 @@ pub struct MarinadeState {
     pub stake_moved: u64,
     pub max_stake_moved_per_epoch: Fee,
 }
+
+
+
