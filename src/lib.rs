@@ -85,8 +85,7 @@ pub fn analyze_transaction(rpc_client: &RpcClient, tx: &EncodedConfirmedTransact
     // total_active_balance + total_cooling_down + reserve - circulating_ticket_balance
     // DIVIDED by msol_supply
     // -----
-    // TODO: figure out what total_active_balance is. i think its amount of staked sol, but need to confirm
-    let msol_value = (post_state.total_active_balance + post_state.emergency_cooling_down + post_state.available_reserve_balance - post_state.circulating_ticket_balance) / post_state.msol_supply;
+    let msol_value = (post_state.validator_system.total_active_balance + post_state.emergency_cooling_down + post_state.available_reserve_balance - post_state.circulating_ticket_balance) / post_state.msol_supply;
 
     let block_time = tx.block_time?;
     let mint_pubkey = MSOL_MINT_PUBKEY.to_string();
