@@ -9,6 +9,8 @@ use std::str::FromStr;
 use anchor_lang::AnchorDeserialize;
 use crate::accounts::marinade::MarinadeState;
 use crate::accounts::instructions::MarinadeFinanceInstruction;
+use sha2::{Sha256, Digest};
+use lazy_static::lazy_static;
 use log::{debug, error};
 
 const SOL_MINT_PUBKEY: &str = "So11111111111111111111111111111111111111112";
@@ -19,6 +21,30 @@ const MARINADE_PROGRAM_KEY: &str = "MR2LqxoSbw831bNy68utpu5n4YqBH3AzDmddkgk9LQv"
 // marinade staking program account pubkey
 const MARINADE_STATE_PUBKEY: &str = "8szGkuLTAux9XMgZ2vtY39jVSowEcpBfFfD8hXSEqdGC";
 
+// this is for testing
+const DEPOSIT_DISCRIMINATOR: [u8; 8] = [0xf2, 0x23, 0xc6, 0x89, 0x52, 0xe1, 0xf2, 0xb6];
+
+// TODO: figure out how to handle multiple types of state changing discriminators
+lazy_static! {
+    static ref STATE_MODIFYING_DISCRIMINATORS: Vec<[u8; 8]> = vec![
+        DEPOSIT_DISCRIMINATOR,
+        get_instruction_discriminator("initialize"),
+        get_instruction_discriminator("change_authority"),
+        get_instruction_discriminator("add_validator"),
+        get_instruction_discriminator("remove_validator"),
+        get_instruction_discriminator("set_validator_score"),
+        get_instruction_discriminator("config_validator"),
+        get_instruction_discriminator("deposit_stake_account"),
+        get_instruction_discriminator("liquid_unstake"),
+        get_instruction_discriminator("add_liquidity"),
+        get_instruction_discriminator("remove_liquidity"),
+        get_instruction_discriminator("set_lp_params"),
+        get_instruction_discriminator("configure_delegated_stake"),
+        get_instruction_discriminator("order_unstake"),
+        get_instruction_discriminator("claim"),
+        // Add any other state-modifying instructions here
+    ];
+}
 #[derive(Debug, Clone)]
 pub struct MintUnderlying {
     pub block_time: i64,
@@ -42,59 +68,59 @@ fn find_and_parse_marinade_state(rpc_client: &RpcClient, pubkey: &Pubkey) -> Opt
     MarinadeState::deserialize(&mut data_slice).ok()
 }
 
-///check if the transaction affects the msol value by reviewing the tx instructions for state modifying instructions
+// anchors discriminator values are the first 8 bytes of the sha256 sum of the instruction name and it makes me wanna vomit
+fn get_instruction_discriminator(name: &str) -> [u8; 8] {
+    let mut hasher = Sha256::new();
+    hasher.update(name.as_bytes());
+    let result = hasher.finalize();
+    let mut discriminator = [0u8; 8];
+    discriminator.copy_from_slice(&result[..8]);
+    discriminator
+}
+
 fn does_tx_affect_msol_value(tx: &EncodedConfirmedTransactionWithStatusMeta) -> bool {
     let decoded_transaction = match tx.transaction.transaction.decode() {
         Some(decoded) => decoded,
         None => {
-            debug!("Failed to decode transaction");
+            debug!("failed to decode transaction");
             return false;
         }
     };
 
-    let marinade_program_pubkey = match Pubkey::from_str(MARINADE_PROGRAM_KEY) {
-        Ok(pubkey) => pubkey,
-        Err(e) => {
-            error!("Failed to parse Marinade state pubkey: {}", e);
-            return false;
-        }
-    };
+    let marinade_program_pubkey = Pubkey::from_str(MARINADE_PROGRAM_KEY).unwrap();
 
-    debug!("Checking {} instructions", decoded_transaction.message.instructions().len());
-
-    decoded_transaction.message.instructions().iter().enumerate().any(|(i, instruction)| {
+    for (i, instruction) in decoded_transaction.message.instructions().iter().enumerate() {
         let program_id = instruction.program_id(decoded_transaction.message.static_account_keys());
-        debug!("Instruction {}: Program ID: {}", i, program_id);
+        debug!("instruction {}: program ID: {:?}", i, program_id);
         
         if *program_id == marinade_program_pubkey {
-            debug!("Instruction {} matches Marinade program", i);
-            match MarinadeFinanceInstruction::deserialize(&mut &instruction.data[..]) {
-                Ok(marinade_instruction) => {
-                    let affects_msol = matches!(
-                        marinade_instruction,
-                        MarinadeFinanceInstruction::Deposit
-                            | MarinadeFinanceInstruction::DepositStakeAccount
-                            | MarinadeFinanceInstruction::LiquidUnstake
-                            | MarinadeFinanceInstruction::AddLiquidity
-                            | MarinadeFinanceInstruction::RemoveLiquidity
-                            | MarinadeFinanceInstruction::OrderUnstake
-                            | MarinadeFinanceInstruction::Claim
-                            | MarinadeFinanceInstruction::WithdrawStakeAccount
-                    );
-                    debug!("Instruction {} affects msol: {}", i, affects_msol);
-                    affects_msol
+            debug!("instruction {} matches Marinade program", i);
+            if instruction.data.len() >= 8 {
+                let ix_discriminator: [u8; 8] = instruction.data[..8].try_into().unwrap();
+                debug!("instruction {} discriminator: {:?}", i, ix_discriminator);
+                
+                // TODO: switch this to an all encompassing state changing discriminator map or something
+                if ix_discriminator == DEPOSIT_DISCRIMINATOR {
+                    debug!("deposit instruction found!");
+                    return true;
                 }
-                Err(e) => {
-                    debug!("Failed to deserialize instruction {}: {}", i, e);
-                    false
+                
+                for (j, &disc) in STATE_MODIFYING_DISCRIMINATORS.iter().enumerate() {
+                    debug!("comparing with discriminator {}: {:?}", j, disc);
+                    if disc == ix_discriminator {
+                        debug!("match found! Instruction affects mSOL value");
+                        return true;
+                    }
                 }
+            } else {
+                debug!("instruction {} data too short: {}", i, instruction.data.len());
             }
-        } else {
-            false
         }
-    })
-}
+    }
 
+    debug!("no state-modifying instructions found");
+    false
+}
 /// analyze a tx to check if it affects the Marinade state and if so, convert the data into MintUnderlying and return
 pub fn analyze_transaction(rpc_client: &RpcClient, tx: &EncodedConfirmedTransactionWithStatusMeta) -> Option<MintUnderlying> {
     let marinade_state_pubkey = Pubkey::from_str(MARINADE_STATE_PUBKEY).ok()?;
@@ -200,15 +226,18 @@ mod tests {
 
     #[test]
     fn test_does_tx_affect_msol_value() {
-        env_logger::init();  // Initialize the logger
+        env_logger::init();  // initialize logger
 
         let rpc_client = RpcClient::new("https://api.mainnet-beta.solana.com".to_string());
         let deposit_signature = "4uL95njGxnL7oPRBv6qb9ZKeWbTfKifbJgKe5zJ98FFyh7TJofUghQ2tcp4gR9fUHsX5exHayzcK9Zt1SR1Cwy7k";
 
+        debug!("fetching transaction...");
         let tx = fetch_transaction(deposit_signature).expect("failed to fetch deposit transaction");
 
+        debug!("analyzing transaction...");
         let result = does_tx_affect_msol_value(&tx);
         
-        assert!(result, "Transaction should affect msol value");
+        debug!("transaction affects msol value: {}", result);
+        assert!(result, "transaction should affect msol value");
     }
 }
