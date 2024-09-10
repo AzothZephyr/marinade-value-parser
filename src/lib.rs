@@ -9,9 +9,14 @@ use std::str::FromStr;
 use anchor_lang::AnchorDeserialize;
 use crate::accounts::marinade::MarinadeState;
 use crate::accounts::instructions::MarinadeFinanceInstruction;
+use log::{debug, error};
 
 const SOL_MINT_PUBKEY: &str = "So11111111111111111111111111111111111111112";
 const MSOL_MINT_PUBKEY: &str = "mSoLzYCxHdYgdzU16g5QSh3i5K3z3KZK1iNKhS3nZF";
+
+// marinade program pubkey
+const MARINADE_PROGRAM_KEY: &str = "MR2LqxoSbw831bNy68utpu5n4YqBH3AzDmddkgk9LQv";
+// marinade staking program account pubkey
 const MARINADE_STATE_PUBKEY: &str = "8szGkuLTAux9XMgZ2vtY39jVSowEcpBfFfD8hXSEqdGC";
 
 #[derive(Debug, Clone)]
@@ -41,28 +46,52 @@ fn find_and_parse_marinade_state(rpc_client: &RpcClient, pubkey: &Pubkey) -> Opt
 fn does_tx_affect_msol_value(tx: &EncodedConfirmedTransactionWithStatusMeta) -> bool {
     let decoded_transaction = match tx.transaction.transaction.decode() {
         Some(decoded) => decoded,
-        None => return false,
-    };
-
-    decoded_transaction.message.instructions().iter().any(|instruction| {
-        // TODO: do we want to continue here, instead of returning false? 
-        if *instruction.program_id(decoded_transaction.message.static_account_keys()) != Pubkey::from_str(MARINADE_STATE_PUBKEY).unwrap() {
+        None => {
+            debug!("Failed to decode transaction");
             return false;
         }
+    };
 
-        MarinadeFinanceInstruction::deserialize(&mut &instruction.data[..]).map_or(false, |marinade_instruction| {
-            matches!(
-                marinade_instruction,
-                MarinadeFinanceInstruction::Deposit
-                    | MarinadeFinanceInstruction::DepositStakeAccount
-                    | MarinadeFinanceInstruction::LiquidUnstake
-                    | MarinadeFinanceInstruction::AddLiquidity
-                    | MarinadeFinanceInstruction::RemoveLiquidity
-                    | MarinadeFinanceInstruction::OrderUnstake
-                    | MarinadeFinanceInstruction::Claim
-                    | MarinadeFinanceInstruction::WithdrawStakeAccount
-            )
-        })
+    let marinade_program_pubkey = match Pubkey::from_str(MARINADE_PROGRAM_KEY) {
+        Ok(pubkey) => pubkey,
+        Err(e) => {
+            error!("Failed to parse Marinade state pubkey: {}", e);
+            return false;
+        }
+    };
+
+    debug!("Checking {} instructions", decoded_transaction.message.instructions().len());
+
+    decoded_transaction.message.instructions().iter().enumerate().any(|(i, instruction)| {
+        let program_id = instruction.program_id(decoded_transaction.message.static_account_keys());
+        debug!("Instruction {}: Program ID: {}", i, program_id);
+        
+        if *program_id == marinade_program_pubkey {
+            debug!("Instruction {} matches Marinade program", i);
+            match MarinadeFinanceInstruction::deserialize(&mut &instruction.data[..]) {
+                Ok(marinade_instruction) => {
+                    let affects_msol = matches!(
+                        marinade_instruction,
+                        MarinadeFinanceInstruction::Deposit
+                            | MarinadeFinanceInstruction::DepositStakeAccount
+                            | MarinadeFinanceInstruction::LiquidUnstake
+                            | MarinadeFinanceInstruction::AddLiquidity
+                            | MarinadeFinanceInstruction::RemoveLiquidity
+                            | MarinadeFinanceInstruction::OrderUnstake
+                            | MarinadeFinanceInstruction::Claim
+                            | MarinadeFinanceInstruction::WithdrawStakeAccount
+                    );
+                    debug!("Instruction {} affects msol: {}", i, affects_msol);
+                    affects_msol
+                }
+                Err(e) => {
+                    debug!("Failed to deserialize instruction {}: {}", i, e);
+                    false
+                }
+            }
+        } else {
+            false
+        }
     })
 }
 
@@ -127,6 +156,7 @@ pub fn fetch_transaction(signature: &str) -> Result<EncodedConfirmedTransactionW
 #[cfg(test)]
 mod tests {
     use super::*;
+    use env_logger;
 
     #[test]
     fn test_deposit_transaction() {
@@ -166,5 +196,19 @@ mod tests {
             msol_value >= expected_msol_min && msol_value <= expected_msol_max,
             "msol value is outside the expected range"
         );
+    }
+
+    #[test]
+    fn test_does_tx_affect_msol_value() {
+        env_logger::init();  // Initialize the logger
+
+        let rpc_client = RpcClient::new("https://api.mainnet-beta.solana.com".to_string());
+        let deposit_signature = "4uL95njGxnL7oPRBv6qb9ZKeWbTfKifbJgKe5zJ98FFyh7TJofUghQ2tcp4gR9fUHsX5exHayzcK9Zt1SR1Cwy7k";
+
+        let tx = fetch_transaction(deposit_signature).expect("failed to fetch deposit transaction");
+
+        let result = does_tx_affect_msol_value(&tx);
+        
+        assert!(result, "Transaction should affect msol value");
     }
 }
