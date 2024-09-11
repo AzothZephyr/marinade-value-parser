@@ -4,10 +4,11 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-solana-transaction-status = "1.14"
-solana-client = "1.14"
-solana-sdk = "1.14"
-anchor-lang = "0.27.0"
+solana-transaction-status = "1.16"
+solana-client = "1.16"
+solana-sdk = "1.16"
+anchor-lang = "0.28.0"
+anchor-spl = "0.28.0"
 serde_json = "1.0"
 serde = { version = "1.0", features = ["derive"] }
 bs58 = "0.4.0"
@@ -18,3 +19,11 @@ log = "0.4"
 env_logger = "0.10"
 sha2 = "0.10.6"
 lazy_static = "1.4.0"
+# marinade-finance = { git = "https://github.com/marinade-finance/liquid-staking-program.git", branch = "main" }
+
+# # used import objects directly from on chain program
+# [patch.crates-io]
+# marinade-finance = { git = "https://github.com/marinade-finance/liquid-staking-program.git", branch = "main" }
+
+# [net]
+# git-fetch-with-cli = true
